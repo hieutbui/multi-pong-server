@@ -220,10 +220,12 @@ export class MyRoom extends Room<MyRoomState> {
       // First player (bottom)
       player.y = GAME_HEIGHT - PADDLE_HEIGHT - 10; // 10px from bottom
       player.x = (GAME_WIDTH - PADDLE_WIDTH) / 2; // Center horizontally
+      player.position = 'bottom';
     } else {
       // Second player (top)
       player.y = 10; // 10px from top
       player.x = (GAME_WIDTH - PADDLE_WIDTH) / 2; // Center horizontally
+      player.position = 'top';
     }
 
     // Set player in the players map

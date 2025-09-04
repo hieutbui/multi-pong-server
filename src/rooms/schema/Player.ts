@@ -12,4 +12,7 @@ export default class Player extends Schema {
 
   @type('number')
   score: number = 0;
+
+  @type('string')
+  position: string = 'bottom'; // Can be 'top' or 'bottom'
 }
