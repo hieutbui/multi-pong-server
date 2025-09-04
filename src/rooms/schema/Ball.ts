@@ -11,10 +11,10 @@ export default class Ball extends Schema {
   y: number = GAME_HEIGHT / 2;
 
   @type('number')
-  vx: number = (Math.random() > 0.5 ? 1 : -1) * 5;
+  vx: number = (Math.random() - 0.5) * 3; // Small horizontal component
 
   @type('number')
-  vy: number = (Math.random() > 0.5 ? 1 : -1) * 5;
+  vy: number = (Math.random() > 0.5 ? 1 : -1) * 5; // Larger vertical component for vertical gameplay
   
   @type('number')
   speed: number = 5;
@@ -22,23 +22,24 @@ export default class Ball extends Schema {
   @type('number')
   maxSpeed: number = 15;
   
-  // Reset the ball to center with random direction
+  // Reset the ball to center with random direction, favoring vertical movement
   reset() {
     this.x = GAME_WIDTH / 2;
     this.y = GAME_HEIGHT / 2;
     
-    // Random angle between -45 and 45 degrees (in radians)
-    const angle = (Math.random() * 90 - 45) * Math.PI / 180;
+    // Random angle between -30 and 30 degrees from vertical (in radians)
+    const angle = (Math.random() * 60 - 30) * Math.PI / 180;
     
-    // Randomize direction (left or right)
+    // Randomize direction (up or down)
     const direction = Math.random() > 0.5 ? 1 : -1;
     
     // Set initial speed
     this.speed = 5;
     
-    // Set velocity components based on angle and speed
-    this.vx = direction * this.speed * Math.cos(angle);
-    this.vy = this.speed * Math.sin(angle);
+    // For vertical gameplay, vy is the primary component (using sin for vertical)
+    // and vx is secondary (using cos for horizontal)
+    this.vy = direction * this.speed * Math.cos(angle);
+    this.vx = this.speed * Math.sin(angle);
   }
   
   // Increase ball speed up to maxSpeed
@@ -47,9 +48,9 @@ export default class Ball extends Schema {
       this.speed += 0.5;
       
       // Maintain direction but increase magnitude
-      const currentAngle = Math.atan2(this.vy, this.vx);
-      this.vx = this.speed * Math.cos(currentAngle);
-      this.vy = this.speed * Math.sin(currentAngle);
+      const currentAngle = Math.atan2(this.vx, this.vy); // Note: swapped to put vy as primary
+      this.vy = this.speed * Math.cos(currentAngle);
+      this.vx = this.speed * Math.sin(currentAngle);
     }
   }
 }

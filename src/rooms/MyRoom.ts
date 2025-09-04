@@ -11,12 +11,22 @@ export class MyRoom extends Room<MyRoomState> {
   private countdownInterval: NodeJS.Timeout | null = null;
 
   onCreate(options: any) {
-    //Listen for player paddle movement
+    //Listen for player paddle movement (horizontal now)
     this.onMessage('move', (client, message) => {
       const player = this.state.players.get(client.sessionId);
 
       if (player) {
-        player.y = message.y;
+        // Now moving horizontally (x) instead of vertically (y)
+        player.x = message.x;
+      }
+    });
+
+    // Handle join button press
+    this.onMessage('join', (client) => {
+      console.log(`Player ${client.sessionId} requested to join game`);
+      // If the game is already full or in progress, we can handle that case
+      if (this.clients.length === 2 && this.state.gameState === GameState.WAITING_FOR_PLAYERS) {
+        this.startCountdown();
       }
     });
 
@@ -59,45 +69,45 @@ export class MyRoom extends Room<MyRoomState> {
       ball.x += ball.vx;
       ball.y += ball.vy;
 
-      // Ball collision with top/bottom walls
-      if (ball.y - BALL_RADIUS < 0 || ball.y + BALL_RADIUS > GAME_HEIGHT) {
-        ball.vy *= -1;
+      // Ball collision with left/right walls (in vertical layout)
+      if (ball.x - BALL_RADIUS < 0 || ball.x + BALL_RADIUS > GAME_WIDTH) {
+        ball.vx *= -1;
       }
 
       // Ball collision with paddles
-      this.state.players.forEach((player) => {
-        // Left paddle
-        if (player.x < GAME_WIDTH / 2 && ball.vx < 0) {
+      this.state.players.forEach((player, sessionId) => {
+        // Bottom paddle (current player)
+        if (player.y > GAME_HEIGHT / 2 && ball.vy > 0) {
           if (
-            ball.x - BALL_RADIUS < player.x + PADDLE_WIDTH &&
-            ball.y > player.y &&
-            ball.y < player.y + PADDLE_HEIGHT
+            ball.y + BALL_RADIUS > player.y &&
+            ball.x > player.x &&
+            ball.x < player.x + PADDLE_WIDTH
           ) {
-            ball.vx *= -1;
+            ball.vy *= -1;
             // Increase ball speed on paddle hit
             ball.increaseSpeed();
             
             // Add some angle variation based on where the ball hits the paddle
-            const hitPosition = (ball.y - player.y) / PADDLE_HEIGHT; // 0 to 1
+            const hitPosition = (ball.x - player.x) / PADDLE_WIDTH; // 0 to 1
             const angleModifier = (hitPosition - 0.5) * 0.5; // -0.25 to 0.25
-            ball.vy += angleModifier * ball.speed;
+            ball.vx += angleModifier * ball.speed;
           }
         }
-        // Right paddle
-        if (player.x > GAME_WIDTH / 2 && ball.vx > 0) {
+        // Top paddle (opponent)
+        if (player.y < GAME_HEIGHT / 2 && ball.vy < 0) {
           if (
-            ball.x + BALL_RADIUS > player.x && 
-            ball.y > player.y && 
-            ball.y < player.y + PADDLE_HEIGHT
+            ball.y - BALL_RADIUS < player.y + PADDLE_HEIGHT &&
+            ball.x > player.x && 
+            ball.x < player.x + PADDLE_WIDTH
           ) {
-            ball.vx *= -1;
+            ball.vy *= -1;
             // Increase ball speed on paddle hit
             ball.increaseSpeed();
             
             // Add some angle variation based on where the ball hits the paddle
-            const hitPosition = (ball.y - player.y) / PADDLE_HEIGHT; // 0 to 1
+            const hitPosition = (ball.x - player.x) / PADDLE_WIDTH; // 0 to 1
             const angleModifier = (hitPosition - 0.5) * 0.5; // -0.25 to 0.25
-            ball.vy += angleModifier * ball.speed;
+            ball.vx += angleModifier * ball.speed;
           }
         }
       });
@@ -105,16 +115,38 @@ export class MyRoom extends Room<MyRoomState> {
       // --- SCORING LOGIC ---
       const playerIds = Array.from(this.state.players.keys());
       
-      // If ball goes past the right paddle, player 1 scores
-      if (ball.x + BALL_RADIUS > GAME_WIDTH) {
-        this.scorePoint(playerIds[0]);
+      // If ball goes past the top paddle, bottom player scores
+      if (ball.y - BALL_RADIUS < 0) {
+        // Find the bottom player
+        const bottomPlayerId = this.findPlayerAtPosition('bottom');
+        if (bottomPlayerId) {
+          this.scorePoint(bottomPlayerId);
+        }
       }
 
-      // If ball goes past the left paddle, player 2 scores
-      if (ball.x - BALL_RADIUS < 0) {
-        this.scorePoint(playerIds[1]);
+      // If ball goes past the bottom paddle, top player scores
+      if (ball.y + BALL_RADIUS > GAME_HEIGHT) {
+        // Find the top player
+        const topPlayerId = this.findPlayerAtPosition('top');
+        if (topPlayerId) {
+          this.scorePoint(topPlayerId);
+        }
       }
     });
+  }
+
+  // Helper method to find player by position (top or bottom)
+  findPlayerAtPosition(position: 'top' | 'bottom'): string | null {
+    let result: string | null = null;
+    
+    this.state.players.forEach((player, sessionId) => {
+      if ((position === 'top' && player.y < GAME_HEIGHT / 2) ||
+          (position === 'bottom' && player.y > GAME_HEIGHT / 2)) {
+        result = sessionId;
+      }
+    });
+    
+    return result;
   }
 
   scorePoint(scoringPlayerId: string) {
@@ -131,13 +163,13 @@ export class MyRoom extends Room<MyRoomState> {
     // Check for game over
     if (currentScore + 1 >= this.state.winningScore) {
       this.state.gameState = GameState.GAME_OVER;
-      this.state.stateMessage = `Player ${scoringPlayerId} wins!`;
+      this.state.stateMessage = `${scoringPlayerId}`;
       return;
     }
 
     // Point scored state
     this.state.gameState = GameState.POINT_SCORED;
-    this.state.stateMessage = `Player ${scoringPlayerId} scored!`;
+    this.state.stateMessage = `Point scored!`;
 
     // Reset ball after a brief pause
     this.clock.setTimeout(() => {
@@ -179,8 +211,20 @@ export class MyRoom extends Room<MyRoomState> {
     console.log(`[${this.roomId}] CLIENT JOINED:`, client.sessionId);
     const player = new Player();
 
-    // Assign player to left or right side based on the number of clients
-    player.x = this.clients.length === 1 ? PADDLE_WIDTH * 2 : GAME_WIDTH - PADDLE_WIDTH * 3;
+    // Send player number to client
+    client.send("playerNo", this.clients.length);
+    
+    // Assign player to top or bottom based on the number of clients
+    // First player (index 0) at bottom, second player (index 1) at top
+    if (this.clients.length === 1) {
+      // First player (bottom)
+      player.y = GAME_HEIGHT - PADDLE_HEIGHT - 10; // 10px from bottom
+      player.x = (GAME_WIDTH - PADDLE_WIDTH) / 2; // Center horizontally
+    } else {
+      // Second player (top)
+      player.y = 10; // 10px from top
+      player.x = (GAME_WIDTH - PADDLE_WIDTH) / 2; // Center horizontally
+    }
 
     // Set player in the players map
     this.state.players.set(client.sessionId, player);
@@ -191,7 +235,8 @@ export class MyRoom extends Room<MyRoomState> {
     if (this.clients.length === this.maxClients) {
       this.lock();
       console.log(`[${this.roomId}] Room is now locked.`);
-      this.startCountdown();
+      this.state.gameState = GameState.WAITING_FOR_PLAYERS;
+      this.state.stateMessage = "Press START to begin!";
     } else {
       this.state.gameState = GameState.WAITING_FOR_PLAYERS;
       this.state.stateMessage = "Waiting for opponent...";
